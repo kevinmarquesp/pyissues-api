@@ -3,7 +3,7 @@ PYTEST = .venv/bin/pytest
 SQLITE3 = /usr/bin/sqlite3
 
 RUN_SCRIPT_FILE = run.py
-SCHEMA_SQL_FILE = infra/migrations/schema.sql
+SCHEMA_SQL_FILE = infra/sql/schema.sql
 DATABASE_FILE = db.sqlite3
 
 
