@@ -15,6 +15,15 @@ def get_db():
 
   return g.db
 
+def init_db():
+  db = get_db()
+
+  with open('infra/sql/schema.sql') as f:  # improve that later
+    db.executescript(f.read())
+
+  db.commit()
+  db.close()
+
 
 def close_db(e=None):
   db = g.pop('db', None) 

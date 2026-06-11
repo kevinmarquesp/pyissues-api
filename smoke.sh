@@ -86,6 +86,10 @@ done
 
 unset _ARGV _LONG_OPTS _OPTS
 
+uid() {
+  echo "$(date +%s)$RANDOM"
+}
+
 # TEST FUNCTIONS
 # --------------
 # each one should:
@@ -96,6 +100,38 @@ unset _ARGV _LONG_OPTS _OPTS
 test_health() {
   jq <<<'{"/health": "GET"}'
   curl -s "${BASE_URL}/health" | jq
+}
+
+test_register() {
+  jq <<<'{"/auth/register": "POST"}'
+  curl -s -X POST "${BASE_URL}/auth/register" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "username": "kevin_'"$(uid)"'",
+      "email": "kevin_'"$(uid)"'@example.com",
+      "password": "secret123"
+    }' | jq
+}
+
+test_login_missing_fields() {
+  jq <<<'{"/auth/login (missing password)": "POST"}'
+  curl -s -X POST "${BASE_URL}/auth/login" \
+    -H "Content-Type: application/json" \
+    -d '{"username": "kevin_'"$(uid)"'"}' | jq
+}
+
+test_register_and_login() {
+  local kevin_uid=kevin_$(uid)
+
+  jq <<<'{"/auth/register + /auth/login": "POST"}'
+
+  curl -s -X POST "${BASE_URL}/auth/register" \
+    -H "Content-Type: application/json" \
+    -d '{"username": "'"$kevin_uid"'", "email": "'"$kevin_uid"'@example.com", "password": "secret123"}' | jq
+
+  curl -s -X POST "${BASE_URL}/auth/login" \
+    -H "Content-Type: application/json" \
+    -d '{"username": "'"$kevin_uid"'", "password": "secret123"}' | jq
 }
 
 # Add new tests below following the same pattern, e.g.:

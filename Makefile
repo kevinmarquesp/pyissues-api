@@ -2,7 +2,7 @@ PYTHON = .venv/bin/python
 PYTEST = .venv/bin/pytest
 SQLITE3 = /usr/bin/sqlite3
 
-RUN_SCRIPT_FILE = run.py
+RUN_SCRIPT_FILE = app.py
 SCHEMA_SQL_FILE = infra/sql/schema.sql
 DATABASE_FILE = db.sqlite3
 
@@ -25,4 +25,4 @@ db/init:
 
 .PHONY: clean
 clean:
-	rm -vrf **/__pycache__ $(DATABASE_FILE)
+	rm -vrf __pycache__ **/__pycache__ .pytest_cache $(DATABASE_FILE)

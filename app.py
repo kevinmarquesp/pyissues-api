@@ -1,13 +1,8 @@
-from os import getenv
 from flask import Flask
 from api.health_routes import health_bp
+from api.auth_routes import auth_bp
 from infra.db import close_db
-
-
-class Config:
-  FLASK_DEBUG = getenv('FLASK_DEBUG', '0') == '1'
-  SQLITE3_FILE = getenv('SQLITE3_FILE', 'db.sqlite3')
-  JWT_SECRET = getenv('JWT_SECRET', 'development_secret')
+from config import Config
 
 
 def create_app(config_class=Config):
@@ -17,11 +12,12 @@ def create_app(config_class=Config):
   app.teardown_appcontext(close_db)
 
   app.register_blueprint(health_bp)
+  app.register_blueprint(auth_bp)
 
   return app
 
 
-app = create_app()
-
 if __name__ == '__main__':
+  app = create_app()
+
   app.run(host='0.0.0.0', port=5000)
