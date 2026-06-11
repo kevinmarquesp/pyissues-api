@@ -1,7 +1,10 @@
 PYTHON = .venv/bin/python
 PYTEST = .venv/bin/pytest
+SQLITE3 = /usr/bin/sqlite3
 
-RUN_SCRIPT = run.py
+RUN_SCRIPT_FILE = run.py
+SCHEMA_SQL_FILE = infra/migrations/schema.sql
+DATABASE_FILE = db.sqlite3
 
 
 .PHONY: install
@@ -10,8 +13,16 @@ install:
 
 .PHONY: run
 run:
-	$(PYTHON) '$(RUN_SCRIPT)'
+	$(PYTHON) '$(RUN_SCRIPT_FILE)'
 
 .PHONY: test
 test:
 	$(PYTEST) -v
+
+.PHONY: db/init
+db/init:
+	$(SQLITE3) $(DATABASE_FILE) < $(SCHEMA_SQL_FILE)
+
+.PHONY: clean
+clean:
+	rm -vrf **/__pycache__ $(DATABASE_FILE)

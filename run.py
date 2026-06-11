@@ -1,6 +1,7 @@
 from os import getenv
 from flask import Flask
 from api.health_routes import health_bp
+from infra.db import close_db
 
 
 class Config:
@@ -13,6 +14,8 @@ def create_app(config_class=Config):
   app = Flask(__name__)
 
   app.config.from_object(config_class)
+  app.teardown_appcontext(close_db)
+
   app.register_blueprint(health_bp)
 
   return app
