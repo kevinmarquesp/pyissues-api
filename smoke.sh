@@ -86,8 +86,24 @@ done
 
 unset _ARGV _LONG_OPTS _OPTS
 
+# unique id
 uid() {
   echo "$(date +%s)$RANDOM"
+}
+
+# registers a throwaway user, logs in, and prints just the JWT token
+_get_token() {
+  local kevin_uid=kevin_$(uid)
+
+  curl -s -X POST "${BASE_URL}/auth/register" \
+    -H "Content-Type: application/json" \
+    -d '{"username": "'"$kevin_uid"'", "email": "'"$kevin_uid"'@example.com", "password": "secret123"}' \
+    >/dev/null
+
+  curl -s -X POST "${BASE_URL}/auth/login" \
+    -H "Content-Type: application/json" \
+    -d '{"username": "'"$kevin_uid"'", "password": "secret123"}' |
+    jq -r '.token'
 }
 
 # TEST FUNCTIONS
@@ -96,6 +112,89 @@ uid() {
 # - call the endpoint with curl
 # - pretty-print the response with jq
 # - print a short label so output is easy to scan
+
+test_create_project_unauthorized() {
+  jq <<<'{"/projects (no token)": "POST"}'
+  curl -s -X POST "${BASE_URL}/projects" \
+    -H "Content-Type: application/json" \
+    -d '{"name": "Should fail", "description": "no auth header"}' | jq
+}
+
+test_create_project() {
+  local token
+  token=$(_get_token)
+
+  jq <<<'{"/projects": "POST"}'
+  curl -s -X POST "${BASE_URL}/projects" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"name": "Pocket Tracker", "description": "MVP project"}' | jq
+}
+
+test_list_projects() {
+  local token
+  token=$(_get_token)
+
+  curl -s -X POST "${BASE_URL}/projects" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"name": "Project A", "description": "first"}' >/dev/null
+
+  curl -s -X POST "${BASE_URL}/projects" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"name": "Project B", "description": "second"}' >/dev/null
+
+  jq <<<'{"/projects": "GET"}'
+  curl -s "${BASE_URL}/projects" \
+    -H "Authorization: Bearer ${token}" | jq
+}
+
+test_project_full_lifecycle() {
+  local token id
+
+  token=$(_get_token)
+
+  jq <<<'{"/projects (create)": "POST"}'
+  id=$(curl -s -X POST "${BASE_URL}/projects" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"name": "Lifecycle Project", "description": "before update"}' | tee /dev/stderr | jq -r '.id')
+
+  jq <<<'{"/projects/<id> (get)": "GET"}'
+  curl -s "${BASE_URL}/projects/${id}" \
+    -H "Authorization: Bearer ${token}" | jq
+
+  jq <<<'{"/projects/<id> (update)": "PUT"}'
+  curl -s -X PUT "${BASE_URL}/projects/${id}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"name": "Lifecycle Project (renamed)", "description": "after update"}' | jq
+
+  jq <<<'{"/projects/<id> (delete)": "DELETE"}'
+  curl -s -o /dev/null -w "status: %{http_code}\n" -X DELETE "${BASE_URL}/projects/${id}" \
+    -H "Authorization: Bearer ${token}"
+
+  jq <<<'{"/projects/<id> (get after delete)": "GET"}'
+  curl -s "${BASE_URL}/projects/${id}" \
+    -H "Authorization: Bearer ${token}" | jq
+}
+
+test_project_wrong_owner() {
+  local token_a token_b id
+
+  token_a=$(_get_token)
+  token_b=$(_get_token)
+
+  id=$(curl -s -X POST "${BASE_URL}/projects" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token_a}" \
+    -d '{"name": "Owned by A", "description": null}' | jq -r '.id')
+
+  jq <<<'{"/projects/<id> (get with B'"'"'s token)": "GET"}'
+  curl -s "${BASE_URL}/projects/${id}" \
+    -H "Authorization: Bearer ${token_b}" | jq
+}
 
 test_health() {
   jq <<<'{"/health": "GET"}'
