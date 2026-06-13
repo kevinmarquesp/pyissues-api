@@ -106,12 +106,147 @@ _get_token() {
     jq -r '.token'
 }
 
+# creates a project with the given token, prints just its id
+_create_project() {
+  local token="$1"
+  local name="${2:-Smoke Project}"
+
+  curl -s -X POST "${BASE_URL}/projects" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"name": "'"$name"'", "description": "created for smoke testing"}' |
+    jq -r '.id'
+}
+
 # TEST FUNCTIONS
 # --------------
 # each one should:
 # - call the endpoint with curl
 # - pretty-print the response with jq
 # - print a short label so output is easy to scan
+
+test_create_issue() {
+  local token project_id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+
+  jq <<<'{"/projects/<id>/issues": "POST"}'
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Fix login bug", "description": "Users can'\''t log in with email"}' | jq
+}
+
+test_create_issue_invalid_priority() {
+  local token project_id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+
+  jq <<<'{"/projects/<id>/issues (invalid priority)": "POST"}'
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Bad priority", "priority": "urgent"}' | jq
+}
+
+test_list_issues_with_status_filter() {
+  local token project_id id_a id_b
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+
+  id_a=$(curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Issue A"}' | jq -r '.id')
+
+  id_b=$(curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Issue B"}' | jq -r '.id')
+
+  # move issue B to "doing"
+  curl -s -X PUT "${BASE_URL}/projects/${project_id}/issues/${id_b}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Issue B", "status": "doing"}' >/dev/null
+
+  jq <<<'{"/projects/<id>/issues?status=todo": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues?status=todo" \
+    -H "Authorization: Bearer ${token}" | jq
+
+  jq <<<'{"/projects/<id>/issues?status=doing": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues?status=doing" \
+    -H "Authorization: Bearer ${token}" | jq
+}
+
+test_issue_full_lifecycle() {
+  local token project_id id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+
+  jq <<<'{"/projects/<id>/issues (create)": "POST"}'
+  id=$(curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Lifecycle issue", "description": "before update"}' | tee /dev/stderr | jq -r '.id')
+
+  jq <<<'{"/projects/<id>/issues/<id> (get)": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues/${id}" \
+    -H "Authorization: Bearer ${token}" | jq
+
+  jq <<<'{"/projects/<id>/issues/<id> (todo -> doing)": "PUT"}'
+  curl -s -X PUT "${BASE_URL}/projects/${project_id}/issues/${id}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Lifecycle issue", "description": "in progress", "status": "doing"}' | jq
+
+  jq <<<'{"/projects/<id>/issues/<id> (doing -> done)": "PUT"}'
+  curl -s -X PUT "${BASE_URL}/projects/${project_id}/issues/${id}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Lifecycle issue", "description": "finished", "status": "done", "priority": "high"}' | jq
+
+  jq <<<'{"/projects/<id>/issues/<id> (delete)": "DELETE"}'
+  curl -s -o /dev/null -w "status: %{http_code}\n" -X DELETE "${BASE_URL}/projects/${project_id}/issues/${id}" \
+    -H "Authorization: Bearer ${token}"
+
+  jq <<<'{"/projects/<id>/issues/<id> (get after delete)": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues/${id}" \
+    -H "Authorization: Bearer ${token}" | jq
+}
+
+test_issue_invalid_status_transition() {
+  local token project_id id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+
+  id=$(curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Cannot skip to done"}' | jq -r '.id')
+
+  jq <<<'{"/projects/<id>/issues/<id> (todo -> done, should fail)": "PUT"}'
+  curl -s -X PUT "${BASE_URL}/projects/${project_id}/issues/${id}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "Cannot skip to done", "status": "done"}' | jq
+}
+
+test_issue_wrong_owner() {
+  local token_a token_b project_id id
+  token_a=$(_get_token)
+  token_b=$(_get_token)
+  project_id=$(_create_project "$token_a")
+
+  id=$(curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token_a}" \
+    -d '{"title": "Owned by A"}' | jq -r '.id')
+
+  jq <<<'{"/projects/<id>/issues/<id> (get with B'"'"'s token)": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues/${id}" \
+    -H "Authorization: Bearer ${token_b}" | jq
+}
 
 test_create_project_unauthorized() {
   jq <<<'{"/projects (no token)": "POST"}'

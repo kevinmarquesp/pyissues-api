@@ -2,6 +2,7 @@ from flask import Flask
 from api.health_routes import health_bp
 from api.auth_routes import auth_bp
 from api.project_routes import project_bp
+from api.issue_routes import issue_bp
 from infra.db import close_db
 from config import Config
 
@@ -15,6 +16,7 @@ def create_app(config_class=Config):
   app.register_blueprint(health_bp)
   app.register_blueprint(auth_bp)
   app.register_blueprint(project_bp)
+  app.register_blueprint(issue_bp)
 
   return app
 

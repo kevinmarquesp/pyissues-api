@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from domain.entities import User
 from domain.entities import Project
+from domain.entities import Issue
 
 class UserRepo(ABC):
     @abstractmethod
@@ -30,3 +31,24 @@ class ProjectRepo(ABC):
 
     @abstractmethod
     def delete(self, project_id: int) -> None: ...  # TODO: return deleted project
+
+class IssueRepo(ABC):
+    @abstractmethod
+    def get_by_id(self, issue_id: int) -> Issue | None: ...
+
+    @abstractmethod
+    def list_by_project(
+        self, project_id: int,
+        status: str | None = None,
+        priority: str | None = None
+    ) -> list[Issue]: ...
+
+    # TODO: manually pass args, to avoid None id attribute in Issue
+    @abstractmethod
+    def add(self, issue: Issue) -> Issue: ...
+
+    @abstractmethod
+    def update(self, issue: Issue) -> Issue: ...
+
+    @abstractmethod
+    def delete(self, issue_id: int) -> None: ...
