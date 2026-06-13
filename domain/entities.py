@@ -55,3 +55,13 @@ class Issue:
             return True
 
         return new_status in _VALID_TRANSITIONS.get(self.status, set())
+
+
+
+
+@dataclass
+class Comment:
+    id: int | None
+    issue_id: int
+    user_id: int
+    body: str

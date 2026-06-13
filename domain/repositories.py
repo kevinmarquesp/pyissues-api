@@ -52,3 +52,21 @@ class IssueRepo(ABC):
 
     @abstractmethod
     def delete(self, issue_id: int) -> None: ...
+
+from domain.entities import Comment
+
+class CommentRepo(ABC):
+    @abstractmethod
+    def get_by_id(self, comment_id: int) -> Comment | None: ...
+
+    @abstractmethod
+    def list_by_issue(self, issue_id: int) -> list[Comment]: ...
+
+    @abstractmethod
+    def add(self, comment: Comment) -> Comment: ...
+
+    @abstractmethod
+    def update(self, comment: Comment) -> Comment: ...
+
+    @abstractmethod
+    def delete(self, comment_id: int) -> None: ...

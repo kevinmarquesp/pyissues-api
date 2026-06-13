@@ -118,12 +118,139 @@ _create_project() {
     jq -r '.id'
 }
 
+# creates an issue in the given project with the given token, prints just its id
+_create_issue() {
+  local token="$1"
+  local project_id="$2"
+  local title="${3:-Smoke Issue}"
+
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"title": "'"$title"'", "description": "created for smoke testing"}' |
+    jq -r '.id'
+}
+
 # TEST FUNCTIONS
 # --------------
 # each one should:
 # - call the endpoint with curl
 # - pretty-print the response with jq
 # - print a short label so output is easy to scan
+
+test_create_comment() {
+  local token project_id issue_id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+  issue_id=$(_create_issue "$token" "$project_id")
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments": "POST"}'
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"body": "This needs more detail in the description"}' | jq
+}
+
+test_create_comment_missing_body() {
+  local token project_id issue_id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+  issue_id=$(_create_issue "$token" "$project_id")
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments (missing body)": "POST"}'
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{}' | jq
+}
+
+test_list_comments() {
+  local token project_id issue_id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+  issue_id=$(_create_issue "$token" "$project_id")
+
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"body": "First comment"}' >/dev/null
+
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"body": "Second comment"}' >/dev/null
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Authorization: Bearer ${token}" | jq
+}
+
+test_comment_full_lifecycle() {
+  local token project_id issue_id id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+  issue_id=$(_create_issue "$token" "$project_id")
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments (create)": "POST"}'
+  id=$(curl -s -X POST "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"body": "before update"}' | tee /dev/stderr | jq -r '.id')
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments/<id> (get)": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments/${id}" \
+    -H "Authorization: Bearer ${token}" | jq
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments/<id> (update)": "PUT"}'
+  curl -s -X PUT "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments/${id}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token}" \
+    -d '{"body": "after update"}' | jq
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments/<id> (delete)": "DELETE"}'
+  curl -s -o /dev/null -w "status: %{http_code}\n" -X DELETE \
+    "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments/${id}" \
+    -H "Authorization: Bearer ${token}"
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments/<id> (get after delete)": "GET"}'
+  curl -s "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments/${id}" \
+    -H "Authorization: Bearer ${token}" | jq
+}
+
+test_comment_wrong_author() {
+  local token_a token_b project_id issue_id id
+  token_a=$(_get_token)
+  token_b=$(_get_token)
+  project_id=$(_create_project "$token_a")
+  issue_id=$(_create_issue "$token_a" "$project_id")
+
+  id=$(curl -s -X POST "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token_a}" \
+    -d '{"body": "written by A"}' | jq -r '.id')
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments/<id> (update with B'"'"'s token, should fail)": "PUT"}'
+  curl -s -X PUT "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments/${id}" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer ${token_b}" \
+    -d '{"body": "hijacked"}' | jq
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments/<id> (delete with B'"'"'s token, should fail)": "DELETE"}'
+  curl -s -X DELETE "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments/${id}" \
+    -H "Authorization: Bearer ${token_b}" | jq
+}
+
+test_comment_unauthorized() {
+  local token project_id issue_id
+  token=$(_get_token)
+  project_id=$(_create_project "$token")
+  issue_id=$(_create_issue "$token" "$project_id")
+
+  jq <<<'{"/projects/<id>/issues/<id>/comments (no token, should fail)": "POST"}'
+  curl -s -X POST "${BASE_URL}/projects/${project_id}/issues/${issue_id}/comments" \
+    -H "Content-Type: application/json" \
+    -d '{"body": "no auth header"}' | jq
+}
 
 test_create_issue() {
   local token project_id
